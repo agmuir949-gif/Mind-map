@@ -240,10 +240,13 @@ input,textarea,button{font-family:inherit;}
     <div class="T" id="tab-m">
       <canvas id="mapCanvas"></canvas>
       <div id="map-hover"><div class="mh-inner"><div class="mh-label" id="mhL"></div><div class="mh-detail" id="mhD"></div></div></div>
-      <div id="map-tip">Drag to pan · Scroll to zoom · Hover nodes</div>
-      <div id="map-overlay">
-        <button class="map-btn" onclick="rebuildMap()">↻ Rebuild Map</button>
+      <div id="map-tip">Drag to rotate · Scroll to zoom · Hover nodes</div>
+      <div id="map-empty" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;">
+        <div style="font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(0,255,231,0.4);margin-bottom:16px;">Mind Map</div>
+        <div style="font-family:Georgia,serif;font-size:15px;color:rgba(255,255,255,0.3);margin-bottom:24px;">Tap to build your knowledge graph</div>
+        <button onclick="rebuildMap()" style="pointer-events:all;background:transparent;border:1px solid rgba(0,255,231,0.35);color:rgba(0,255,231,0.7);font-family:'Courier New',monospace;font-size:10px;letter-spacing:.18em;text-transform:uppercase;padding:12px 28px;cursor:pointer;">Build Map</button>
       </div>
+      <button id="rebuild-btn" onclick="rebuildMap()" style="position:absolute;bottom:20px;right:20px;background:rgba(0,0,0,0.8);border:1px solid rgba(0,255,231,0.3);color:rgba(0,255,231,0.6);font-family:'Courier New',monospace;font-size:9px;letter-spacing:.16em;text-transform:uppercase;padding:10px 18px;cursor:pointer;z-index:20;display:none;">↻ Rebuild</button>
     </div>
 
     <!-- CHAT TAB -->
@@ -344,8 +347,23 @@ function goTab(t){
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
       if(!mapCanvas){initMap();}
       resizeMap();
-      if(!mapData){tryLoadMap();if(!mapData)rebuildMap();else startMapAnim();}
-      else{if(!mapAnimId)startMapAnim();else drawMap();}
+      if(!mapData){
+        tryLoadMap();
+        if(!mapData){
+          // Auto-build if entries exist, otherwise show prompt
+          const entries=getEntries();
+          if(entries.length>0) rebuildMap();
+          // empty state shown by default
+        } else {
+          document.getElementById('map-empty').style.display='none';
+          document.getElementById('rebuild-btn').style.display='block';
+          startMapAnim();
+        }
+      } else {
+        document.getElementById('map-empty').style.display='none';
+        document.getElementById('rebuild-btn').style.display='block';
+        if(!mapAnimId)startMapAnim();else drawMap();
+      }
     }));
   }
   if(t==='c'){updateCNote();scrollChat();}
@@ -662,7 +680,11 @@ function layoutNodes(data){
 
 async function rebuildMap(){
   const entries=getEntries();
-  if(!entries.length){document.getElementById('map-tip').textContent='Add journal entries to build your Mind Map';return;}
+  if(!entries.length){
+    document.getElementById('map-tip').textContent='Add journal entries first';
+    return;
+  }
+  document.getElementById('map-empty').style.display='none';
   showProc('Building your mind map…');
   try{
     const apiKey=getKey();
@@ -673,9 +695,16 @@ async function rebuildMap(){
     data.edges.forEach(e=>{const t=data.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});
     mapData=data;LS.set(uk('mapData'),data);
     layoutNodes(data);
-    mapPan={x:0,y:0};mapZoom=1;
+    camTheta=0.4;camPhi=1.1;camR=320;
     startMapAnim();
-  }catch(e){console.error(e);const fb=buildMapFallback(entries);fb.edges.forEach(e=>{const t=fb.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});mapData=fb;layoutNodes(fb);startMapAnim();}
+    document.getElementById('rebuild-btn').style.display='block';
+  }catch(e){
+    console.error(e);
+    const fb=buildMapFallback(entries);
+    fb.edges.forEach(e=>{const t=fb.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});
+    mapData=fb;layoutNodes(fb);startMapAnim();
+    document.getElementById('rebuild-btn').style.display='block';
+  }
   hideProc();
 }
 
