@@ -347,23 +347,12 @@ function goTab(t){
     requestAnimationFrame(()=>requestAnimationFrame(()=>{
       if(!mapCanvas){initMap();}
       resizeMap();
-      if(!mapData){
-        tryLoadMap();
-        if(!mapData){
-          // Auto-build if entries exist, otherwise show prompt
-          const entries=getEntries();
-          if(entries.length>0) rebuildMap();
-          // empty state shown by default
-        } else {
-          document.getElementById('map-empty').style.display='none';
-          document.getElementById('rebuild-btn').style.display='block';
-          startMapAnim();
-        }
-      } else {
-        document.getElementById('map-empty').style.display='none';
-        document.getElementById('rebuild-btn').style.display='block';
-        if(!mapAnimId)startMapAnim();else drawMap();
+      tryLoadMap();
+      if(mapData){
+        // Already have map data — show it
+        showMap();
       }
+      // Otherwise map-empty div stays visible with the Build button
     }));
   }
   if(t==='c'){updateCNote();scrollChat();}
@@ -428,6 +417,15 @@ function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g
 
 // ══ TOAST ══
 function toast(msg){const t=document.createElement('div');t.style.cssText='position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.95);border:1px solid rgba(0,255,231,0.25);color:rgba(0,255,231,0.75);font-size:9px;letter-spacing:.14em;padding:9px 18px;z-index:999;transition:opacity .35s;';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),350);},1800);}
+
+// ══ MIND MAP ══
+function showMap(){
+  const el=document.getElementById('map-empty');
+  if(el)el.style.display='none';
+  const rb=document.getElementById('rebuild-btn');
+  if(rb)rb.style.display='block';
+  if(!mapAnimId)startMapAnim();else drawMap();
+}
 
 // ══ MIND MAP (pure Canvas 2D) ══
 let mapData=null,mapCanvas,mapCtx;
@@ -681,10 +679,9 @@ function layoutNodes(data){
 async function rebuildMap(){
   const entries=getEntries();
   if(!entries.length){
-    document.getElementById('map-tip').textContent='Add journal entries first';
+    alert('Add some journal entries first, then rebuild the map.');
     return;
   }
-  document.getElementById('map-empty').style.display='none';
   showProc('Building your mind map…');
   try{
     const apiKey=getKey();
@@ -696,14 +693,15 @@ async function rebuildMap(){
     mapData=data;LS.set(uk('mapData'),data);
     layoutNodes(data);
     camTheta=0.4;camPhi=1.1;camR=320;
-    startMapAnim();
-    document.getElementById('rebuild-btn').style.display='block';
+    showMap();
   }catch(e){
-    console.error(e);
+    console.error('Map build error:',e);
+    // Always fall back to keyword map so something shows
     const fb=buildMapFallback(entries);
-    fb.edges.forEach(e=>{const t=fb.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});
-    mapData=fb;layoutNodes(fb);startMapAnim();
-    document.getElementById('rebuild-btn').style.display='block';
+    fb.edges.forEach(ev=>{const tn=fb.nodes.find(n=>n.id===ev.t);if(tn&&tn.type==='leaf')tn._catId=ev.s;});
+    mapData=fb;LS.set(uk('mapData'),fb);
+    layoutNodes(fb);
+    showMap();
   }
   hideProc();
 }
