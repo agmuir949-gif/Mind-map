@@ -53,8 +53,8 @@ input,textarea,button{font-family:inherit;}
 .sb-user{font-size:8px;letter-spacing:.12em;color:var(--faint);margin-top:2px;text-transform:uppercase;}
 .sb-tog{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;padding:0 2px;transition:color .2s;line-height:1;flex-shrink:0;}
 .sb-tog:hover{color:var(--teal);}
-.sb-nav{flex:1;padding:10px 0;}
-.ni{display:flex;align-items:center;gap:9px;padding:11px 18px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);cursor:pointer;transition:all .14s;border-left:2px solid transparent;}
+.sb-nav{flex:1;padding:10px 0;position:relative;z-index:10;}
+.ni{display:flex;align-items:center;gap:9px;padding:11px 18px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);cursor:pointer;transition:all .14s;border-left:2px solid transparent;pointer-events:all;position:relative;z-index:10;}
 .ni:hover{color:var(--text);background:rgba(255,255,255,0.03);}
 .ni.on{color:var(--teal);border-left-color:var(--teal);background:var(--teal-dim);}
 .ni-ic{font-size:13px;width:16px;text-align:center;}
@@ -115,7 +115,8 @@ input,textarea,button{font-family:inherit;}
 
 /* ══ MIND MAP TAB ══ */
 #tab-m{position:relative;overflow:hidden;}
-#mapCanvas{position:absolute;top:0;left:0;}
+#tab-m.on{display:block!important;} /* override flex from .T.on */
+#mapCanvas{position:absolute;top:0;left:0;display:block;}
 #map-overlay{position:absolute;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
 .map-btn{background:var(--s1);border:1px solid var(--border);color:var(--dim);font-size:8px;letter-spacing:.16em;text-transform:uppercase;padding:8px 14px;cursor:pointer;transition:all .2s;}
 .map-btn:hover{border-color:var(--teal-border);color:var(--teal);}
@@ -157,7 +158,7 @@ input,textarea,button{font-family:inherit;}
 .cnote{font-size:8px;letter-spacing:.07em;color:var(--faint);margin-top:7px;}
 
 /* API bar */
-#api-bar{position:absolute;bottom:0;left:0;right:0;background:var(--s2);border-top:1px solid var(--border);padding:11px 24px;display:flex;align-items:center;gap:10px;z-index:40;}
+#api-bar{position:absolute;bottom:0;left:0;right:0;background:var(--s2);border-top:1px solid var(--border);padding:11px 24px;display:flex;align-items:center;gap:10px;z-index:30;}
 #api-bar.hide{display:none;}
 .api-lbl{font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);flex-shrink:0;}
 #apiIn{flex:1;background:rgba(255,255,255,0.03);border:1px solid var(--border);color:var(--text);font-size:10px;padding:7px 11px;outline:none;transition:border-color .2s;}
@@ -309,7 +310,7 @@ function doAuth(){
 }
 function signOut(){LS.del('cx_ses');CU=null;location.reload();}
 document.getElementById('aPass').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth();});
-(function(){const s=LS.get('cx_ses');const a=LS.get('cx_accts')||{};if(s&&a[s]){CU=s;document.getElementById('S-auth').classList.remove('on');document.getElementById('S-app').classList.add('on');initApp();}})();
+(function(){const s=LS.get('cx_ses');const a=LS.get('cx_accts')||{};if(s&&a[s]){CU=s;document.getElementById('S-auth').classList.remove('on');document.getElementById('S-app').classList.add('on');setTimeout(initApp,0);}})();
 
 // ══ INIT ══
 function initApp(){
@@ -319,7 +320,7 @@ function initApp(){
   renderEntries();
   loadChat();
   updateCNote();
-  initMap();
+  // initMap called lazily on first map tab visit
 }
 
 // ══ SIDEBAR ══
@@ -340,11 +341,12 @@ function goTab(t){
     document.getElementById('ni-'+x).classList.toggle('on',x===t);
   });
   if(t==='m'){
-    setTimeout(()=>{
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      if(!mapCanvas){initMap();}
       resizeMap();
-      if(!mapData)rebuildMap();
-      else if(!mapAnimId)startMapAnim();
-    },50);
+      if(!mapData){tryLoadMap();if(!mapData)rebuildMap();else startMapAnim();}
+      else{if(!mapAnimId)startMapAnim();else drawMap();}
+    }));
   }
   if(t==='c'){updateCNote();scrollChat();}
 }
@@ -496,8 +498,12 @@ function onMapTouchMove(e){
 function resizeMap(){
   if(!mapCanvas)return;
   const tab=document.getElementById('tab-m');
-  mapCanvas.width=tab.clientWidth||window.innerWidth;
-  mapCanvas.height=tab.clientHeight||window.innerHeight;
+  const W=tab.offsetWidth||tab.clientWidth||window.innerWidth;
+  const H=tab.offsetHeight||tab.clientHeight||window.innerHeight;
+  if(W<10||H<10)return; // not visible yet
+  mapCanvas.width=W;
+  mapCanvas.height=H;
+  drawMap();
 }
 
 function drawMap(){
@@ -705,7 +711,12 @@ function buildMapFallback(entries){
 // Load saved map
 function tryLoadMap(){
   const saved=LS.get(uk('mapData'));
-  if(saved){saved.edges.forEach(e=>{const t=saved.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});mapData=saved;layoutNodes(saved);startMapAnim();}
+  if(saved){
+    saved.edges.forEach(e=>{const t=saved.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});
+    mapData=saved;
+    layoutNodes(saved);
+    // Don't start anim yet — wait until map tab is actually visible
+  }
 }
 
 // ══ CHAT ══
@@ -803,10 +814,9 @@ function hideProc(){document.getElementById('proc').classList.remove('on');}
 // ══ INPUT EVENTS ══
 document.getElementById('cIn').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
 document.getElementById('cIn').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,110)+'px';});
-window.addEventListener('resize',()=>{if(curTab==='m')resizeMap();});
+window.addEventListener('resize',()=>{if(curTab==='m'){resizeMap();}});
 
-// Init map data on load
-setTimeout(()=>{if(CU)tryLoadMap();},100);
+// Map loads lazily when tab is first opened
 </script>
 </body>
 </html>
