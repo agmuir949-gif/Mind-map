@@ -1,849 +1,598 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>CORTEX — Journal AI</title>
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-:root{
-  --teal:#00ffe7;--teal-dim:rgba(0,255,231,0.12);--teal-border:rgba(0,255,231,0.22);
-  --bg:#000;--s1:rgba(8,8,8,0.99);--s2:rgba(13,13,13,0.98);
-  --text:rgba(255,255,255,0.85);--dim:rgba(255,255,255,0.35);--faint:rgba(255,255,255,0.13);
-  --border:rgba(255,255,255,0.07);--red:#ff6b6b;
-  --serif:'Georgia',serif;--mono:'Courier New',monospace;
-}
-html,body{width:100%;height:100%;background:#000;color:var(--text);font-family:var(--mono);overflow:hidden;}
-::-webkit-scrollbar{width:2px;} ::-webkit-scrollbar-thumb{background:rgba(0,255,231,0.12);}
-input,textarea,button{font-family:inherit;}
+import { useState, useRef, useEffect, useCallback } from "react";
 
-/* ── SCREENS ── */
-.screen{position:absolute;inset:0;display:flex;opacity:0;pointer-events:none;transition:opacity 0.35s;}
-.screen.on{opacity:1;pointer-events:all;}
+// ── SYSTEM PROMPT ──────────────────────────────────────────────
+const buildSystemPrompt = (journals) => {
+  const journalContext = journals
+    .filter(j => j.content.trim())
+    .map(j => `[${j.emoji} ${j.name.toUpperCase()}]\n${j.content}`)
+    .join("\n\n---\n\n");
 
-/* ══ AUTH ══ */
-#S-auth{align-items:center;justify-content:center;flex-direction:column;background:#000;}
-#S-auth::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 55% 40% at 50% 50%,rgba(0,255,231,0.04),transparent 70%);pointer-events:none;}
-.auth-wrap{width:min(400px,90vw);}
-.logo{font-family:var(--serif);font-size:26px;color:var(--teal);text-shadow:0 0 28px rgba(0,255,231,0.35);margin-bottom:4px;}
-.tagline{font-size:9px;letter-spacing:.24em;text-transform:uppercase;color:var(--faint);margin-bottom:32px;}
-.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:24px;}
-.tab{background:none;border:none;color:var(--dim);font-size:9px;letter-spacing:.18em;text-transform:uppercase;padding:8px 18px 10px;cursor:pointer;transition:color .2s;position:relative;}
-.tab.on{color:var(--teal);}
-.tab.on::after{content:'';position:absolute;bottom:-1px;left:0;right:0;height:1px;background:var(--teal);}
-.fld{margin-bottom:13px;}
-.lbl{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);display:block;margin-bottom:5px;}
-.inp{width:100%;background:rgba(255,255,255,0.03);border:1px solid var(--border);color:var(--text);font-size:12px;padding:11px 13px;outline:none;transition:border-color .2s;}
-.inp:focus{border-color:var(--teal-border);}
-.inp::placeholder{color:var(--faint);}
-.abtn{width:100%;margin-top:6px;background:transparent;border:1px solid var(--teal);color:var(--teal);font-size:9px;letter-spacing:.2em;text-transform:uppercase;padding:13px;cursor:pointer;transition:all .2s;}
-.abtn:hover{background:var(--teal-dim);}
-.aerr{margin-top:9px;font-size:10px;color:var(--red);min-height:15px;}
+  return `You are an exceptionally skilled, warm, and insightful therapist and journaling guide. You have deep training in CBT, psychodynamic therapy, mindfulness, and narrative therapy.
 
-/* ══ APP ══ */
-#S-app{flex-direction:row;}
+The person keeps multiple separate journals, each covering a distinct area of their life. You have access to ALL of them and should treat them as one integrated picture of who they are — connecting threads across journals when relevant and illuminating how the different areas of their life interact.
 
-/* Sidebar */
-.sb{width:210px;flex-shrink:0;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--s1);transition:width .26s cubic-bezier(.4,0,.2,1);overflow:hidden;}
-.sb.col{width:42px;}
-.sb.col .sb-user,.sb.col .sb-nav,.sb.col .sb-foot,.sb.col .sb-name{display:none;}
-.sb.col .sb-top{padding:11px 0;justify-content:center;}
-.sb-top{padding:20px 18px 14px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;}
-.sb-name{font-family:var(--serif);font-size:17px;color:var(--teal);text-shadow:0 0 14px rgba(0,255,231,0.28);}
-.sb-user{font-size:8px;letter-spacing:.12em;color:var(--faint);margin-top:2px;text-transform:uppercase;}
-.sb-tog{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;padding:0 2px;transition:color .2s;line-height:1;flex-shrink:0;}
-.sb-tog:hover{color:var(--teal);}
-.sb-nav{flex:1;padding:10px 0;position:relative;z-index:10;}
-.ni{display:flex;align-items:center;gap:9px;padding:11px 18px;font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);cursor:pointer;transition:all .14s;border-left:2px solid transparent;pointer-events:all;position:relative;z-index:10;}
-.ni:hover{color:var(--text);background:rgba(255,255,255,0.03);}
-.ni.on{color:var(--teal);border-left-color:var(--teal);background:var(--teal-dim);}
-.ni-ic{font-size:13px;width:16px;text-align:center;}
-.ni-badge{margin-left:auto;background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--teal);font-size:8px;padding:1px 5px;}
-.sb-foot{padding:12px 18px;border-top:1px solid var(--border);}
-.signout{background:none;border:none;font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);cursor:pointer;transition:color .2s;}
-.signout:hover{color:var(--red);}
+Journals provided:
+${journalContext || "[No journal entries yet — invite them to add some]"}
 
-/* Main */
-.main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;}
-.sb-open{position:absolute;top:13px;left:8px;background:var(--s1);border:1px solid var(--border);color:var(--faint);cursor:pointer;width:24px;height:24px;display:none;align-items:center;justify-content:center;z-index:20;font-size:13px;}
-.sb-open:hover{color:var(--teal);}
-.sb.col~.main .sb-open{display:flex;}
+Your role:
+- Answer questions with deep insight drawn from their writing across all journals
+- Notice patterns, contradictions, and growth — especially ACROSS different journals
+- Offer tailored journaling prompts (prefix with 📝)
+- Ask probing, compassionate follow-up questions (prefix with 💭)
+- Be warm, specific, and human — never generic or clinical
+- Reference specific journals by name when relevant (e.g. "In your Productivity journal...")
+- Help them see connections they may not have noticed themselves
 
-/* Tabs */
-.T{flex:1;display:none;flex-direction:column;overflow:hidden;}
-.T.on{display:flex;}
+When responding: be genuine, draw directly from their writing, keep it conversational.`;
+};
 
-/* ══ JOURNAL TAB ══ */
-.j-head{padding:22px 26px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
-.j-title{font-family:var(--serif);font-size:21px;}
-.j-sub{font-size:8px;letter-spacing:.15em;text-transform:uppercase;color:var(--faint);margin-top:2px;}
-.btn-new{background:transparent;border:1px solid var(--teal-border);color:var(--teal);font-size:8px;letter-spacing:.18em;text-transform:uppercase;padding:8px 14px;cursor:pointer;transition:all .2s;white-space:nowrap;}
-.btn-new:hover{background:var(--teal-dim);}
-.j-body{flex:1;overflow-y:auto;padding:18px 26px;}
+// ── DEFAULTS ───────────────────────────────────────────────────
+const DEFAULT_JOURNALS = [
+  { id: "1", name: "Productivity", emoji: "📋", color: "#c9a96e", content: "", savedContent: "", lastUpdated: null },
+  { id: "2", name: "Subconscious Reprograms", emoji: "🧠", color: "#a8c4b8", content: "", savedContent: "", lastUpdated: null },
+  { id: "3", name: "General", emoji: "💭", color: "#b8a8c4", content: "", savedContent: "", lastUpdated: null },
+];
 
-/* Entry form */
-.eform{background:var(--s2);border:1px solid var(--border);padding:18px;margin-bottom:18px;display:none;}
-.eform.open{display:block;}
-.edate{background:rgba(255,255,255,0.03);border:1px solid var(--border);color:var(--text);font-size:10px;padding:7px 11px;outline:none;margin-bottom:11px;width:150px;transition:border-color .2s;}
-.edate:focus{border-color:var(--teal-border);}
-.etxt{width:100%;background:rgba(255,255,255,0.02);border:1px solid var(--border);color:var(--text);font-family:var(--serif);font-size:14px;line-height:1.7;padding:12px;resize:none;outline:none;min-height:130px;transition:border-color .2s;}
-.etxt:focus{border-color:rgba(255,255,255,0.13);}
-.etxt::placeholder{color:var(--faint);font-style:italic;}
-.eactions{display:flex;gap:9px;align-items:center;margin-top:9px;}
-.btn-save{background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--teal);font-size:8px;letter-spacing:.18em;text-transform:uppercase;padding:8px 18px;cursor:pointer;}
-.btn-save:hover{background:rgba(0,255,231,0.18);}
-.btn-cancel{background:transparent;border:1px solid var(--border);color:var(--dim);font-size:8px;letter-spacing:.14em;text-transform:uppercase;padding:8px 14px;cursor:pointer;}
-.bulk-hint{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);cursor:pointer;margin-left:auto;}
-.bulk-hint:hover{color:var(--dim);}
+const WELCOME_MSG = {
+  role: "assistant",
+  content: `Welcome. This is your private space to think, feel, and grow. 🌿
 
-/* Entry cards */
-.ecard{border-bottom:1px solid var(--border);padding:18px 0;cursor:pointer;}
-.ecard:hover .etext{color:var(--text);}
-.edate-lbl{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:7px;opacity:.65;}
-.etext{font-family:var(--serif);font-size:14px;line-height:1.65;color:rgba(255,255,255,0.65);transition:color .15s;}
-.eprev{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
-.efull{display:none;}
-.ecard.exp .eprev{display:none;} .ecard.exp .efull{display:block;}
-.emeta{display:flex;align-items:center;gap:10px;margin-top:9px;}
-.ewc{font-size:8px;letter-spacing:.1em;color:var(--faint);}
-.edel{font-size:8px;letter-spacing:.1em;color:var(--faint);cursor:pointer;margin-left:auto;background:none;border:none;transition:color .2s;}
-.edel:hover{color:var(--red);}
-.empty{text-align:center;padding:50px 20px;color:var(--faint);}
-.empty-ic{font-size:28px;margin-bottom:14px;opacity:.35;}
-.empty-t{font-family:var(--serif);font-size:17px;color:var(--dim);margin-bottom:7px;}
-.empty-s{font-size:10px;line-height:1.6;}
+I have access to all your journals and treat them as one integrated picture of you. The connections between your different areas of life are often where the deepest insights live.
 
-/* ══ MIND MAP TAB ══ */
-#tab-m{position:relative;overflow:hidden;}
-#tab-m.on{display:block!important;} /* override flex from .T.on */
-#mapCanvas{position:absolute;top:0;left:0;display:block;}
-#map-overlay{position:absolute;bottom:18px;right:18px;display:flex;flex-direction:column;gap:8px;align-items:flex-end;}
-.map-btn{background:var(--s1);border:1px solid var(--border);color:var(--dim);font-size:8px;letter-spacing:.16em;text-transform:uppercase;padding:8px 14px;cursor:pointer;transition:all .2s;}
-.map-btn:hover{border-color:var(--teal-border);color:var(--teal);}
-#map-tip{position:absolute;top:16px;left:16px;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);pointer-events:none;}
-#map-hover{position:absolute;opacity:0;pointer-events:none;transition:opacity .15s;top:0;left:0;}
-#map-hover.show{opacity:1;}
-.mh-inner{background:rgba(0,0,0,0.92);border:1px solid var(--border);border-left:2px solid var(--teal);padding:9px 13px;max-width:200px;}
-.mh-label{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);margin-bottom:4px;}
-.mh-detail{font-family:var(--serif);font-size:11px;line-height:1.5;color:var(--dim);}
+**To get started:** select a journal from the sidebar, paste your entries, and save. You can load entries into multiple journals before we begin.
 
-/* ══ CHAT TAB ══ */
-.c-head{padding:16px 24px 12px;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;justify-content:space-between;align-items:center;}
-.c-title{font-family:var(--serif);font-size:18px;}
-.c-sub{font-size:8px;letter-spacing:.13em;text-transform:uppercase;color:var(--faint);margin-top:2px;}
-.c-clr{background:none;border:none;font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);cursor:pointer;}
-.c-clr:hover{color:var(--red);}
-.c-msgs{flex:1;overflow-y:auto;padding:18px 24px;display:flex;flex-direction:column;gap:14px;}
-.msg{display:flex;flex-direction:column;gap:4px;animation:mIn .22s ease;}
-@keyframes mIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-.msg-u{align-items:flex-end;} .msg-a{align-items:flex-start;}
-.bubble{max-width:84%;padding:11px 14px;font-size:13px;line-height:1.65;}
-.msg-u .bubble{background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);font-family:var(--serif);}
-.msg-a .bubble{background:rgba(0,0,0,0.5);border:1px solid var(--border);border-left:2px solid rgba(0,255,231,0.25);color:rgba(255,255,255,0.75);font-family:var(--serif);}
-.msg-a .bubble.thinking{color:var(--faint);font-style:italic;font-size:11px;}
-.mmeta{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);padding:0 2px;}
-.rp{margin-top:3px;max-width:84%;}
-.rp-lbl{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:rgba(0,255,231,0.35);margin-bottom:5px;}
-.rp-chips{display:flex;flex-wrap:wrap;gap:5px;}
-.chip{background:transparent;border:1px solid rgba(0,255,231,0.12);color:rgba(0,255,231,0.45);font-size:9px;letter-spacing:.05em;padding:5px 9px;cursor:pointer;transition:all .18s;text-align:left;}
-.chip:hover{border-color:rgba(0,255,231,0.35);color:rgba(0,255,231,0.8);background:var(--teal-dim);}
-.c-input{padding:12px 24px 16px;border-top:1px solid var(--border);flex-shrink:0;}
-.c-row{display:flex;gap:9px;align-items:flex-end;}
-#cIn{flex:1;background:rgba(255,255,255,0.03);border:1px solid var(--border);color:var(--text);font-family:var(--serif);font-size:13px;line-height:1.5;padding:10px 13px;outline:none;resize:none;min-height:42px;max-height:110px;transition:border-color .2s;}
-#cIn:focus{border-color:rgba(255,255,255,0.13);}
-#cIn::placeholder{color:var(--faint);font-style:italic;}
-#cSend{background:var(--teal-dim);border:1px solid var(--teal-border);color:var(--teal);font-size:14px;padding:10px 14px;cursor:pointer;transition:all .2s;flex-shrink:0;}
-#cSend:hover{background:rgba(0,255,231,0.2);}
-#cSend:disabled{opacity:.25;cursor:not-allowed;}
-.cnote{font-size:8px;letter-spacing:.07em;color:var(--faint);margin-top:7px;}
+Once you're ready, ask me anything — or just tell me how you're feeling today.
 
-/* API bar */
-#api-bar{position:absolute;bottom:0;left:0;right:0;background:var(--s2);border-top:1px solid var(--border);padding:11px 24px;display:flex;align-items:center;gap:10px;z-index:30;}
-#api-bar.hide{display:none;}
-.api-lbl{font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);flex-shrink:0;}
-#apiIn{flex:1;background:rgba(255,255,255,0.03);border:1px solid var(--border);color:var(--text);font-size:10px;padding:7px 11px;outline:none;transition:border-color .2s;}
-#apiIn:focus{border-color:var(--teal-border);}
-#apiIn::placeholder{color:var(--faint);}
-.api-save{background:transparent;border:1px solid var(--teal-border);color:var(--teal);font-size:8px;letter-spacing:.15em;text-transform:uppercase;padding:7px 12px;cursor:pointer;white-space:nowrap;}
+💭 *What's been on your mind most lately?*`
+};
 
-/* Proc overlay */
-#proc{position:absolute;inset:0;background:rgba(0,0,0,0.88);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:60;opacity:0;pointer-events:none;transition:opacity .3s;}
-#proc.on{opacity:1;pointer-events:all;}
-.pring{width:38px;height:38px;border:1px solid rgba(0,255,231,0.18);border-top-color:var(--teal);border-radius:50%;animation:spin 1.1s linear infinite;margin-bottom:14px;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.ptxt{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(0,255,231,0.5);}
-</style>
-</head>
-<body>
+// ── THEMES ─────────────────────────────────────────────────────
+const themes = {
+  dark: {
+    appBg: "#0d0c0b", sidebarBg: "#111009", sidebarBorder: "#1e1c19",
+    journalBg: "#0f0e0d", journalText: "#c9bfaf", journalPlaceholder: "#3a3530",
+    headerTitle: "#e8e0d4", headerSub: "#4a4540", headerBorder: "#1a1815",
+    footerBorder: "#1e1c19", wordCount: "#4a4540", divider: "#1e1c19",
+    chatBg: "#0d0c0b", chatHeaderBorder: "#1a1815",
+    chatTitle: "#e8e0d4", chatSub: "#5a5248",
+    msgUserBg: "#1a1815", msgUserBorder: "#2a2520", msgUserText: "#e8e0d4",
+    msgAssistantText: "#d4c9b8", promptColor: "#c9a96e", questionColor: "#a8c4b8",
+    inputBg: "#141210", inputBorder: "#2a2520", inputText: "#e8e0d4", inputPlaceholder: "#4a4540",
+    chipBorder: "#1e1c19", chipText: "#5a5248", chipHoverBorder: "#3a3530", chipHoverText: "#c9bfaf",
+    privacyText: "#252220",
+    btnBorder: "#2a2520", btnText: "#6a6058", btnHoverBorder: "#4a4540", btnHoverText: "#c9bfaf",
+    saveBtnBg: "#c9a96e", saveBtnText: "#0d0c0b", saveBtnHover: "#e0be84",
+    sendBtnBg: "#c9a96e", sendBtnDisabled: "#1e1c19",
+    dotBg: "#c9a96e", statusDotBg: "#6ab87a", statusDotGlow: "#6ab87a55", statusText: "#6ab87a",
+    noStatusText: "#4a4540", avatarBg: "linear-gradient(135deg,#3a2e22,#5a4535)",
+    scrollThumb: "#2a2520",
+    activeJournalBg: "#1a1815", activeJournalBorder: "#2a2520",
+    journalItemHover: "#141210", journalItemText: "#8a7e72", journalItemActive: "#e8e0d4",
+    newBtnBg: "#1a1815", newBtnBorder: "#2a2520", newBtnText: "#7a6e62",
+    overlayBg: "rgba(0,0,0,0.6)", modalBg: "#111009", modalBorder: "#2a2520",
+    inputFieldBg: "#0d0c0b", inputFieldBorder: "#2a2520", inputFieldText: "#e8e0d4",
+    sessionBtnBg: "#1a1815", sessionBtnBorder: "#2a2520", sessionBtnText: "#8a7e72",
+  },
+  light: {
+    appBg: "#f7f4ef", sidebarBg: "#f0ebe2", sidebarBorder: "#e0d9ce",
+    journalBg: "#ffffff", journalText: "#1a1612", journalPlaceholder: "#b8b0a4",
+    headerTitle: "#1a1612", headerSub: "#9a9088", headerBorder: "#ede8e0",
+    footerBorder: "#ede8e0", wordCount: "#9a9088", divider: "#e8e2d8",
+    chatBg: "#f7f4ef", chatHeaderBorder: "#ede8e0",
+    chatTitle: "#1a1612", chatSub: "#9a9088",
+    msgUserBg: "#ede8e0", msgUserBorder: "#ddd8ce", msgUserText: "#1a1612",
+    msgAssistantText: "#2a2520", promptColor: "#8b6914", questionColor: "#2a6e5e",
+    inputBg: "#ffffff", inputBorder: "#ddd8ce", inputText: "#1a1612", inputPlaceholder: "#b8b0a4",
+    chipBorder: "#ddd8ce", chipText: "#8a8078", chipHoverBorder: "#b8b0a4", chipHoverText: "#2a2520",
+    privacyText: "#c8c0b8",
+    btnBorder: "#ddd8ce", btnText: "#8a8078", btnHoverBorder: "#b8b0a4", btnHoverText: "#2a2520",
+    saveBtnBg: "#8b6914", saveBtnText: "#ffffff", saveBtnHover: "#a07a1a",
+    sendBtnBg: "#8b6914", sendBtnDisabled: "#ddd8ce",
+    dotBg: "#8b6914", statusDotBg: "#2e8b57", statusDotGlow: "#2e8b5755", statusText: "#2e8b57",
+    noStatusText: "#9a9088", avatarBg: "linear-gradient(135deg,#d4c4a0,#c4a86e)",
+    scrollThumb: "#c8bfb0",
+    activeJournalBg: "#e8e2d8", activeJournalBorder: "#ddd8ce",
+    journalItemHover: "#ede8e0", journalItemText: "#8a8078", journalItemActive: "#1a1612",
+    newBtnBg: "#ede8e0", newBtnBorder: "#ddd8ce", newBtnText: "#8a8078",
+    overlayBg: "rgba(0,0,0,0.3)", modalBg: "#f7f4ef", modalBorder: "#ddd8ce",
+    inputFieldBg: "#ffffff", inputFieldBorder: "#ddd8ce", inputFieldText: "#1a1612",
+    sessionBtnBg: "#ede8e0", sessionBtnBorder: "#ddd8ce", sessionBtnText: "#8a8078",
+  }
+};
 
-<!-- AUTH -->
-<div id="S-auth" class="screen on">
-  <div class="auth-wrap">
-    <div class="logo">CORTEX</div>
-    <div class="tagline">Your private journal intelligence</div>
-    <div class="tabs">
-      <button class="tab on" id="tab-login" onclick="setAuthMode('login')">Sign In</button>
-      <button class="tab" id="tab-signup" onclick="setAuthMode('signup')">Create Account</button>
-    </div>
-    <div class="fld"><label class="lbl">Email</label><input class="inp" id="aEmail" type="email" placeholder="you@email.com" autocomplete="email"/></div>
-    <div class="fld"><label class="lbl">Password</label><input class="inp" id="aPass" type="password" placeholder="••••••••" autocomplete="current-password"/></div>
-    <button class="abtn" id="aBtn" onclick="doAuth()">Sign In →</button>
-    <div class="aerr" id="aErr"></div>
-  </div>
-</div>
+// ── HELPERS ────────────────────────────────────────────────────
+const genId = () => Math.random().toString(36).slice(2, 9);
+const fmtDate = (ts) => ts ? new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "no entries";
 
-<!-- APP -->
-<div id="S-app" class="screen">
+// ── MAIN COMPONENT ─────────────────────────────────────────────
+export default function JournalTherapist() {
+  const [journals, setJournals] = useState(DEFAULT_JOURNALS);
+  const [activeJournalId, setActiveJournalId] = useState("1");
+  const [messages, setMessages] = useState([WELCOME_MSG]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [themeMode, setThemeMode] = useState("dark");
+  const [panelsOpen, setPanelsOpen] = useState(true);
+  const sidebarOpen = panelsOpen;
+  const journalPanelOpen = panelsOpen;
+  const setSidebarOpen = (v) => setPanelsOpen(v);
+  const setJournalPanelOpen = (v) => setPanelsOpen(v);
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [sessionText, setSessionText] = useState("");
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [sessionCopied, setSessionCopied] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmoji, setNewEmoji] = useState("📓");
+  const [storageReady, setStorageReady] = useState(false);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
 
-  <div class="sb" id="sidebar">
-    <div class="sb-top">
-      <div>
-        <div class="sb-name">CORTEX</div>
-        <div class="sb-user" id="sbUser">—</div>
-      </div>
-      <button class="sb-tog" id="sbTog" onclick="toggleSB()">‹</button>
-    </div>
-    <nav class="sb-nav">
-      <div class="ni on" id="ni-j" onclick="goTab('j')"><span class="ni-ic">✦</span>Journal<span class="ni-badge" id="eBadge">0</span></div>
-      <div class="ni" id="ni-m" onclick="goTab('m')"><span class="ni-ic">◈</span>Mind Map</div>
-      <div class="ni" id="ni-c" onclick="goTab('c')"><span class="ni-ic">◉</span>Ask Cortex</div>
-    </nav>
-    <div class="sb-foot">
-      <button class="signout" onclick="signOut()">Sign out</button>
-    </div>
-  </div>
+  const t = themes[themeMode];
+  const activeJournal = journals.find(j => j.id === activeJournalId) || journals[0];
 
-  <div class="main">
-    <button class="sb-open" onclick="toggleSB()">›</button>
+  // ── PERSISTENT STORAGE ──────────────────────────────────────
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const stored = await window.storage.get("journals-v2");
+        if (stored?.value) {
+          const parsed = JSON.parse(stored.value);
+          setJournals(parsed.journals || DEFAULT_JOURNALS);
+          setActiveJournalId(parsed.activeId || "1");
+          if (parsed.themeMode) setThemeMode(parsed.themeMode);
+        }
+      } catch {}
+      setStorageReady(true);
+    };
+    load();
+  }, []);
 
-    <!-- JOURNAL TAB -->
-    <div class="T on" id="tab-j">
-      <div class="j-head">
-        <div><div class="j-title">Journal</div><div class="j-sub" id="jSub">Your entries</div></div>
-        <button class="btn-new" onclick="toggleForm()">+ New Entry</button>
-      </div>
-      <div class="j-body" id="jBody">
-        <div class="eform" id="eForm">
-          <input class="edate" id="eDate" type="date"/>
-          <textarea class="etxt" id="eTxt" placeholder="Write your entry… or paste multiple entries with dates like '4/20' at the start of each one to bulk import."></textarea>
-          <div class="eactions">
-            <button class="btn-save" onclick="saveEntry()">Save</button>
-            <button class="btn-cancel" onclick="toggleForm()">Cancel</button>
-            <span class="bulk-hint" onclick="hintBulk()">Bulk import?</span>
+  const persist = useCallback(async (updatedJournals, activeId, theme) => {
+    try {
+      await window.storage.set("journals-v2", JSON.stringify({
+        journals: updatedJournals,
+        activeId,
+        themeMode: theme
+      }));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (storageReady) persist(journals, activeJournalId, themeMode);
+  }, [journals, activeJournalId, themeMode, storageReady, persist]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  // ── JOURNAL ACTIONS ─────────────────────────────────────────
+  const updateJournalContent = (id, content) => {
+    setJournals(prev => prev.map(j => j.id === id ? { ...j, content } : j));
+  };
+
+  const saveJournal = (id) => {
+    const journal = journals.find(j => j.id === id);
+    if (!journal) return;
+    setJournals(prev => prev.map(j =>
+      j.id === id ? { ...j, savedContent: j.content, lastUpdated: Date.now() } : j
+    ));
+  };
+
+  const addJournal = () => {
+    if (!newName.trim()) return;
+    const colors = ["#c9a96e","#a8c4b8","#b8a8c4","#c4a8a8","#a8b8c4","#c4c4a8"];
+    const newJ = {
+      id: genId(), name: newName.trim(), emoji: newEmoji,
+      color: colors[journals.length % colors.length],
+      content: "", savedContent: "", lastUpdated: null
+    };
+    setJournals(prev => [...prev, newJ]);
+    setActiveJournalId(newJ.id);
+    setNewName(""); setNewEmoji("📓");
+    setShowNewModal(false);
+  };
+
+  const deleteJournal = (id) => {
+    if (journals.length <= 1) return;
+    setJournals(prev => prev.filter(j => j.id !== id));
+    if (activeJournalId === id) setActiveJournalId(journals.find(j => j.id !== id)?.id);
+  };
+
+  // ── CHAT ────────────────────────────────────────────────────
+  const sendMessage = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = { role: "user", content: input.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+    try {
+      const systemPrompt = buildSystemPrompt(journals.map(j => ({ ...j, content: j.savedContent })));
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514", max_tokens: 1000,
+          system: systemPrompt,
+          messages: newMessages.map(m => ({ role: m.role, content: m.content }))
+        })
+      });
+      const data = await response.json();
+      const txt = data.content?.find(b => b.type === "text")?.text || "I'm here. Can you say more?";
+      setMessages(prev => [...prev, { role: "assistant", content: txt }]);
+    } catch {
+      setMessages(prev => [...prev, { role: "assistant", content: "Something went quiet on my end. Try again?" }]);
+    } finally { setLoading(false); }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+  };
+
+  // ── SAVE SESSION ────────────────────────────────────────────
+  const saveSession = () => {
+    const lines = ["═══════════════════════════════════════════", "JOURNAL SESSION EXPORT", `Date: ${new Date().toLocaleString()}`, "═══════════════════════════════════════════\n"];
+    lines.push("── JOURNAL ENTRIES ──────────────────────────\n");
+    journals.forEach(j => {
+      lines.push(`${j.emoji} ${j.name.toUpperCase()}`);
+      lines.push(j.savedContent.trim() || "[no entries]");
+      lines.push("\n---\n");
+    });
+    lines.push("── CONVERSATION HISTORY ─────────────────────\n");
+    messages.forEach(m => {
+      lines.push(m.role === "user" ? `YOU:\n${m.content}` : `THERAPIST:\n${m.content}`);
+      lines.push("");
+    });
+    lines.push("─────────────────────────────────────────────");
+    lines.push("To continue: paste this file's content when starting a new session.");
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `journal-session-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+  };
+
+  // ── FORMAT MESSAGE ──────────────────────────────────────────
+  const fmt = (content) => content
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*(.*?)\*/g, "<em>$1</em>")
+    .replace(/📝 (.*?)(?=\n|$)/g, `<span style="display:block;font-style:italic;color:${t.promptColor};margin:5px 0 5px 0;">📝 $1</span>`)
+    .replace(/💭 (.*?)(?=\n|$)/g, `<span style="display:block;color:${t.questionColor};margin:5px 0;">💭 $1</span>`)
+    .replace(/\n/g, "<br/>");
+
+  const loadedCount = journals.filter(j => j.savedContent.trim()).length;
+
+  // ── RENDER ──────────────────────────────────────────────────
+  return (
+    <div style={{ display: "flex", height: "100vh", background: t.appBg, overflow: "hidden", transition: "background 0.3s", fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 3px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: ${t.scrollThumb}; border-radius: 2px; }
+        .jrnl-ta { font-family:'Cormorant Garamond',serif; font-size:18px; line-height:1.9; color:${t.journalText}; background:transparent; border:none; resize:none; width:100%; height:100%; padding:0; outline:none; transition:color .3s; }
+        .jrnl-ta::placeholder { color:${t.journalPlaceholder}; font-style:italic; }
+        .chat-ta { font-family:'DM Sans',sans-serif; font-size:14px; font-weight:300; color:${t.inputText}; background:transparent; border:none; outline:none; resize:none; width:100%; line-height:1.6; min-height:24px; max-height:100px; overflow-y:auto; transition:color .3s; }
+        .chat-ta::placeholder { color:${t.inputPlaceholder}; }
+        .field-input { font-family:'DM Sans',sans-serif; font-size:14px; color:${t.inputFieldText}; background:${t.inputFieldBg}; border:1px solid ${t.inputFieldBorder}; padding:10px 14px; border-radius:4px; outline:none; width:100%; }
+        .field-input:focus { border-color:${t.saveBtnBg}; }
+        .fade-in { animation: fadeIn 0.35s ease forwards; }
+        .slide-in { animation: slideIn 0.25s ease forwards; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:translateY(0);} }
+        @keyframes slideIn { from{opacity:0;transform:translateX(-12px);}to{opacity:1;transform:translateX(0);} }
+        @keyframes pulse { 0%,80%,100%{opacity:.2;transform:scale(.8);}40%{opacity:1;transform:scale(1);} }
+        .j-item { cursor:pointer; border-radius:6px; transition:background 0.15s; }
+        .j-item:hover { background:${t.journalItemHover}; }
+        .outbtn { background:transparent; border:1px solid ${t.btnBorder}; color:${t.btnText}; font-family:'DM Sans',sans-serif; font-size:11px; letter-spacing:.08em; text-transform:uppercase; padding:6px 13px; border-radius:2px; cursor:pointer; transition:all .2s; white-space:nowrap; }
+        .outbtn:hover { border-color:${t.btnHoverBorder}; color:${t.btnHoverText}; }
+      `}</style>
+
+      {/* ══ SIDEBAR ════════════════════════════════════════════ */}
+      {!sidebarOpen ? (
+        <div
+          onClick={() => setSidebarOpen(true)}
+          title="Open journals"
+          style={{ width: 42, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 16, paddingBottom: 14, gap: 8, background: t.sidebarBg, borderRight: `1px solid ${t.sidebarBorder}`, cursor: "pointer", transition: "background .2s", zIndex: 10 }}
+          onMouseEnter={e => e.currentTarget.style.background = themeMode === "dark" ? "#161412" : "#ebe6dc"}
+          onMouseLeave={e => e.currentTarget.style.background = t.sidebarBg}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={t.headerSub} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginBottom: 4 }}>
+            <polyline points="3,2 7,5 3,8" />
+          </svg>
+          {journals.map((j) => (
+            <div key={j.id} title={j.name} onClick={e => { e.stopPropagation(); setActiveJournalId(j.id); setSidebarOpen(true); setJournalPanelOpen(true); }}
+              style={{ width: 28, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, background: j.id === activeJournalId ? t.activeJournalBg : "transparent", border: j.id === activeJournalId ? `1px solid ${t.activeJournalBorder}` : "1px solid transparent", position: "relative", flexShrink: 0 }}
+            >
+              {j.emoji}
+              {j.savedContent.trim() && <span style={{ position: "absolute", bottom: 1, right: 1, width: 5, height: 5, borderRadius: "50%", background: j.color, boxShadow: `0 0 4px ${j.color}99` }} />}
+            </div>
+          ))}
+          <div style={{ marginTop: "auto", fontSize: 16, color: t.headerSub, paddingBottom: 2 }}>+</div>
+        </div>
+      ) : (
+        <div className="slide-in" style={{ width: 220, flexShrink: 0, display: "flex", flexDirection: "column", background: t.sidebarBg, borderRight: `1px solid ${t.sidebarBorder}`, transition: "background .3s", zIndex: 10 }}>
+          {/* Sidebar Header */}
+          <div style={{ padding: "20px 16px 14px", borderBottom: `1px solid ${t.sidebarBorder}`, display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 18, fontWeight: 400, color: t.headerTitle, marginBottom: 2 }}>My Journals</div>
+              <div style={{ fontSize: 11, color: t.headerSub, letterSpacing: ".07em", textTransform: "uppercase" }}>{journals.length} journal{journals.length !== 1 ? "s" : ""}</div>
+            </div>
+            <button onClick={() => setSidebarOpen(false)} title="Collapse sidebar" style={{ background: "transparent", border: "none", cursor: "pointer", padding: "2px 4px", color: t.headerSub, display: "flex", alignItems: "center" }}>
+              <svg width="12" height="12" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="7,2 3,5 7,8" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Journal List */}
+          <div style={{ flex: 1, overflow: "auto", padding: "10px 8px" }}>
+            {journals.map((j, idx) => (
+              <div key={j.id} className="j-item slide-in" style={{ animationDelay: `${idx * 0.04}s`, padding: "10px 10px", marginBottom: 2, background: j.id === activeJournalId ? t.activeJournalBg : "transparent", border: j.id === activeJournalId ? `1px solid ${t.activeJournalBorder}` : "1px solid transparent" }}
+                onClick={() => { setActiveJournalId(j.id); setJournalPanelOpen(true); }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                    <span style={{ fontSize: 15, flexShrink: 0 }}>{j.emoji}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: j.id === activeJournalId ? 500 : 400, color: j.id === activeJournalId ? t.journalItemActive : t.journalItemText, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{j.name}</div>
+                      <div style={{ fontSize: 10, color: t.headerSub, marginTop: 1 }}>{fmtDate(j.lastUpdated)}</div>
+                    </div>
+                  </div>
+                  {j.savedContent.trim() && <span style={{ width: 6, height: 6, borderRadius: "50%", background: j.color, flexShrink: 0, boxShadow: `0 0 5px ${j.color}88` }} />}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Sidebar Footer */}
+          <div style={{ padding: "10px 8px 14px", borderTop: `1px solid ${t.sidebarBorder}` }}>
+            <button onClick={() => setShowNewModal(true)} style={{ width: "100%", background: t.newBtnBg, border: `1px solid ${t.newBtnBorder}`, color: t.newBtnText, fontFamily: "'DM Sans',sans-serif", fontSize: 12, padding: "9px 0", borderRadius: 4, cursor: "pointer", transition: "all .2s", letterSpacing: ".05em", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <span style={{ fontSize: 14 }}>+</span> New Journal
+            </button>
+            <button onClick={saveSession} style={{ width: "100%", marginTop: 6, background: t.sessionBtnBg, border: `1px solid ${t.sessionBtnBorder}`, color: t.sessionBtnText, fontFamily: "'DM Sans',sans-serif", fontSize: 11, padding: "8px 0", borderRadius: 4, cursor: "pointer", transition: "all .2s", letterSpacing: ".06em", textTransform: "uppercase" }}>
+              ↓ Save Session
+            </button>
           </div>
         </div>
-        <div id="eList"></div>
-      </div>
-    </div>
+      )}
 
-    <!-- MIND MAP TAB -->
-    <div class="T" id="tab-m">
-      <canvas id="mapCanvas"></canvas>
-      <div id="map-hover"><div class="mh-inner"><div class="mh-label" id="mhL"></div><div class="mh-detail" id="mhD"></div></div></div>
-      <div id="map-tip" style="position:absolute;top:14px;left:50%;transform:translateX(-50%);font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,0.15);pointer-events:none;white-space:nowrap;">Drag to rotate · Scroll to zoom · Hover nodes</div>
-      <div id="map-empty" style="position:absolute;top:0;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;">
-        <div style="font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(0,255,231,0.45);margin-bottom:14px;">Mind Map</div>
-        <div style="font-family:Georgia,serif;font-size:16px;color:rgba(255,255,255,0.35);margin-bottom:28px;text-align:center;padding:0 20px;">Build your knowledge graph<br><span style="font-size:12px;color:rgba(255,255,255,0.2);">from your journal entries</span></div>
-        <button id="build-map-btn" onclick="rebuildMap()" style="background:transparent;border:1px solid rgba(0,255,231,0.5);color:rgba(0,255,231,0.85);font-family:'Courier New',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;padding:14px 36px;cursor:pointer;transition:all .2s;">Build Map →</button>
-      </div>
-      <button id="rebuild-btn" onclick="rebuildMap()" style="position:absolute;top:14px;right:16px;background:rgba(0,0,0,0.75);border:1px solid rgba(0,255,231,0.25);color:rgba(0,255,231,0.55);font-family:'Courier New',monospace;font-size:9px;letter-spacing:.14em;text-transform:uppercase;padding:8px 14px;cursor:pointer;z-index:20;display:none;">↻ Rebuild</button>
-    </div>
-
-    <!-- CHAT TAB -->
-    <div class="T" id="tab-c">
-      <div class="c-head">
-        <div><div class="c-title">Ask Cortex</div><div class="c-sub" id="cSub">Loading…</div></div>
-        <button class="c-clr" onclick="clearChat()">Clear</button>
-      </div>
-      <div class="c-msgs" id="cMsgs"></div>
-      <div class="c-input">
-        <div class="c-row">
-          <textarea id="cIn" placeholder="Ask about your journal…" rows="1"></textarea>
-          <button id="cSend" onclick="sendMsg()">↑</button>
+      {/* ══ JOURNAL PANEL — collapsed rail or full panel ══════ */}
+      {!journalPanelOpen ? (
+        /* ── COLLAPSED RAIL ── */
+        <div
+          onClick={() => setJournalPanelOpen(true)}
+          title="Open journal"
+          style={{
+            width: 42, flexShrink: 0, display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", gap: 10,
+            background: t.journalBg, borderRight: `1px solid ${t.divider}`,
+            cursor: "pointer", transition: "background .2s", position: "relative",
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = themeMode === "dark" ? "#161412" : "#f5f0e8"}
+          onMouseLeave={e => e.currentTarget.style.background = t.journalBg}
+        >
+          {/* Rotated label */}
+          <div style={{
+            position: "absolute", top: "50%", left: "50%",
+            transform: "translate(-50%, -50%) rotate(-90deg)",
+            display: "flex", alignItems: "center", gap: 8, whiteSpace: "nowrap",
+            pointerEvents: "none",
+          }}>
+            <span style={{ fontSize: 14 }}>{activeJournal.emoji}</span>
+            <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 13, color: t.headerSub, letterSpacing: ".06em" }}>
+              {activeJournal.name}
+            </span>
+            {/* Expand chevron */}
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke={t.headerSub} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3,2 7,5 3,8" />
+            </svg>
+          </div>
+          {/* Saved dot indicator */}
+          {activeJournal.savedContent.trim() && (
+            <span style={{ position: "absolute", bottom: 14, width: 5, height: 5, borderRadius: "50%", background: activeJournal.color, boxShadow: `0 0 5px ${activeJournal.color}88` }} />
+          )}
         </div>
-        <div class="cnote" id="cNote"></div>
+      ) : (
+        /* ── FULL PANEL ── */
+        <div style={{ width: "42%", minWidth: 320, display: "flex", flexDirection: "column", background: t.journalBg, borderRight: `1px solid ${t.divider}`, transition: "background .3s", overflow: "hidden" }}>
+          {/* Journal Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 28px", borderBottom: `1px solid ${t.headerBorder}`, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 20 }}>{activeJournal.emoji}</span>
+              <div>
+                <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 19, fontWeight: 400, color: t.headerTitle }}>{activeJournal.name}</div>
+                <div style={{ fontSize: 11, color: t.headerSub, letterSpacing: ".07em", textTransform: "uppercase" }}>
+                  {activeJournal.savedContent.trim() ? `saved ${fmtDate(activeJournal.lastUpdated)}` : "unsaved"}
+                </div>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <button className="outbtn" onClick={() => setThemeMode(m => m === "dark" ? "light" : "dark")}>{themeMode === "dark" ? "☀️" : "🌙"}</button>
+              {/* Collapse button with chevron */}
+              <button className="outbtn" onClick={() => setJournalPanelOpen(false)} title="Collapse journal" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="7,2 3,5 7,8" />
+                </svg>
+                Hide
+              </button>
+            </div>
+          </div>
+
+          {/* Textarea */}
+          <div style={{ flex: 1, overflow: "auto", padding: "24px 36px 0" }}>
+            <textarea
+              className="jrnl-ta"
+              placeholder={`Write or paste your ${activeJournal.name} entries here...\n\nAny format works — dates, bullet points, stream of consciousness.\nThe more you share, the richer the insight.`}
+              value={activeJournal.content}
+              onChange={e => updateJournalContent(activeJournal.id, e.target.value)}
+            />
+          </div>
+
+          {/* Journal Footer */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 36px 16px", borderTop: `1px solid ${t.footerBorder}`, flexShrink: 0, gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <span style={{ fontSize: 12, color: t.wordCount }}>
+                {activeJournal.content.trim() ? `${activeJournal.content.trim().split(/\s+/).length} words` : "empty"}
+              </span>
+              {journals.length > 1 && (
+                <button onClick={() => deleteJournal(activeJournal.id)} style={{ background: "transparent", border: "none", color: t.wordCount, fontSize: 11, cursor: "pointer", opacity: 0.6 }}>delete</button>
+              )}
+            </div>
+            <button
+              onClick={() => saveJournal(activeJournal.id)}
+              style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 12, fontWeight: 400, letterSpacing: ".09em", textTransform: "uppercase", background: activeJournal.savedContent === activeJournal.content && activeJournal.savedContent ? "#3a3530" : t.saveBtnBg, border: "none", color: activeJournal.savedContent === activeJournal.content && activeJournal.savedContent ? t.wordCount : t.saveBtnText, padding: "10px 26px", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}
+              onMouseEnter={e => { if (activeJournal.savedContent !== activeJournal.content || !activeJournal.savedContent) e.currentTarget.style.background = t.saveBtnHover; }}
+              onMouseLeave={e => { e.currentTarget.style.background = activeJournal.savedContent === activeJournal.content && activeJournal.savedContent ? "#3a3530" : t.saveBtnBg; }}
+            >
+              {activeJournal.savedContent === activeJournal.content && activeJournal.savedContent ? "✓ Saved" : "Save & Load"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ══ CHAT PANEL ═════════════════════════════════════════ */}
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", background: t.chatBg, transition: "background .3s", minWidth: 0 }}>
+        {/* Chat Header */}
+        <div style={{ padding: "14px 22px", borderBottom: `1px solid ${t.chatHeaderBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: t.avatarBg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, flexShrink: 0 }}>🌿</div>
+            <div>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 400, color: t.chatTitle }}>Your Therapist</div>
+              <div style={{ fontSize: 11, color: t.chatSub, display: "flex", alignItems: "center", gap: 6 }}>
+                {loadedCount > 0
+                  ? <><span style={{ width: 5, height: 5, borderRadius: "50%", background: t.statusDotBg, display: "inline-block", boxShadow: `0 0 5px ${t.statusDotGlow}` }} /><span style={{ color: t.statusText }}>{loadedCount} journal{loadedCount > 1 ? "s" : ""} loaded</span></>
+                  : <span style={{ color: t.noStatusText }}>no journals loaded yet</span>}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            <button className="outbtn" onClick={saveSession}>↓ Save Session</button>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div style={{ flex: 1, overflow: "auto", padding: "20px 22px", display: "flex", flexDirection: "column", gap: 18 }}>
+          {messages.map((msg, i) => (
+            <div key={i} className="fade-in" style={{ display: "flex", flexDirection: "column" }}>
+              {msg.role === "user"
+                ? <div style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 300, lineHeight: 1.7, color: t.msgUserText, background: t.msgUserBg, border: `1px solid ${t.msgUserBorder}`, borderRadius: "16px 16px 4px 16px", padding: "11px 16px", maxWidth: "80%", alignSelf: "flex-end" }}>{msg.content}</div>
+                : <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 17, fontWeight: 300, lineHeight: 1.8, color: t.msgAssistantText, maxWidth: "94%", alignSelf: "flex-start" }} dangerouslySetInnerHTML={{ __html: fmt(msg.content) }} />}
+            </div>
+          ))}
+          {loading && (
+            <div className="fade-in" style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 0" }}>
+              {[0, 0.2, 0.4].map((d, i) => <span key={i} style={{ width: 6, height: 6, background: t.dotBg, borderRadius: "50%", display: "inline-block", margin: "0 2px", animation: `pulse 1.2s ease-in-out ${d}s infinite` }} />)}
+            </div>
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Quick Chips */}
+        <div style={{ padding: "0 22px 8px", display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0 }}>
+          {["What patterns do you see?", "Connect my journals", "Give me a prompt", "What am I avoiding?"].map(q => (
+            <button key={q} onClick={() => setInput(q)}
+              style={{ fontFamily: "'DM Sans',sans-serif", fontSize: 11, fontWeight: 300, color: t.chipText, background: "transparent", border: `1px solid ${t.chipBorder}`, padding: "5px 13px", borderRadius: 20, cursor: "pointer", transition: "all .2s" }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = t.chipHoverBorder; e.currentTarget.style.color = t.chipHoverText; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = t.chipBorder; e.currentTarget.style.color = t.chipText; }}
+            >{q}</button>
+          ))}
+        </div>
+
+        {/* Input */}
+        <div style={{ padding: "8px 22px 16px", borderTop: `1px solid ${t.chatHeaderBorder}`, flexShrink: 0 }}>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 10, background: t.inputBg, border: `1px solid ${t.inputBorder}`, borderRadius: 14, padding: "11px 13px", transition: "background .3s" }}>
+            <textarea ref={inputRef} className="chat-ta"
+              placeholder="Ask about patterns across your journals, or just share how you're feeling..."
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              rows={1}
+              onInput={e => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 100) + "px"; }}
+            />
+            <button onClick={sendMessage} disabled={loading || !input.trim()}
+              style={{ background: (loading || !input.trim()) ? t.sendBtnDisabled : t.sendBtnBg, border: "none", color: "#fff", width: 34, height: 34, borderRadius: "50%", cursor: (loading || !input.trim()) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", transition: "all .2s", flexShrink: 0 }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+              </svg>
+            </button>
+          </div>
+          <div style={{ fontSize: 10, color: t.privacyText, textAlign: "center", marginTop: 7, letterSpacing: ".04em" }}>
+            All journals are private — only shared with this conversation
+          </div>
+        </div>
       </div>
+
+      {/* ══ NEW JOURNAL MODAL ══════════════════════════════════ */}
+      {showNewModal && (
+        <div style={{ position: "fixed", inset: 0, background: t.overlayBg, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowNewModal(false); }}>
+          <div className="fade-in" style={{ background: t.modalBg, border: `1px solid ${t.modalBorder}`, borderRadius: 8, padding: "28px 32px", width: 340, maxWidth: "90vw" }}>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 400, color: t.headerTitle, marginBottom: 20 }}>New Journal</div>
+
+            <div style={{ marginBottom: 14 }}>
+              <label style={{ fontSize: 11, color: t.headerSub, letterSpacing: ".07em", textTransform: "uppercase", display: "block", marginBottom: 6 }}>Name</label>
+              <input className="field-input" placeholder="e.g. Relationships, Dreams, Health..." value={newName} onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addJournal()} autoFocus />
+            </div>
+
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ fontSize: 11, color: t.headerSub, letterSpacing: ".07em", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Emoji</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {["📓","❤️","🌙","💪","🎯","✨","🌱","💡","🔥","🧘","📊","🗝️"].map(em => (
+                  <button key={em} onClick={() => setNewEmoji(em)}
+                    style={{ width: 36, height: 36, borderRadius: 6, fontSize: 18, border: `2px solid ${newEmoji === em ? t.saveBtnBg : t.modalBorder}`, background: newEmoji === em ? t.activeJournalBg : "transparent", cursor: "pointer", transition: "all .15s" }}>
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowNewModal(false)}
+                style={{ flex: 1, fontFamily: "'DM Sans',sans-serif", fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", background: "transparent", border: `1px solid ${t.btnBorder}`, color: t.btnText, padding: "10px 0", borderRadius: 2, cursor: "pointer" }}>
+                Cancel
+              </button>
+              <button onClick={addJournal} disabled={!newName.trim()}
+                style={{ flex: 2, fontFamily: "'DM Sans',sans-serif", fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", background: newName.trim() ? t.saveBtnBg : t.sendBtnDisabled, border: "none", color: newName.trim() ? t.saveBtnText : t.headerSub, padding: "10px 0", borderRadius: 2, cursor: newName.trim() ? "pointer" : "not-allowed", transition: "all .2s" }}>
+                Create Journal
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ SESSION EXPORT MODAL ═══════════════════════════════ */}
+      {showSessionModal && (
+        <div style={{ position: "fixed", inset: 0, background: t.overlayBg, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}
+          onClick={e => { if (e.target === e.currentTarget) setShowSessionModal(false); }}>
+          <div className="fade-in" style={{ background: t.modalBg, border: `1px solid ${t.modalBorder}`, borderRadius: 8, padding: "24px 28px", width: 560, maxWidth: "92vw", maxHeight: "80vh", display: "flex", flexDirection: "column", gap: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 20, fontWeight: 400, color: t.headerTitle }}>Session Export</div>
+              <button onClick={() => setShowSessionModal(false)} style={{ background: "transparent", border: "none", color: t.headerSub, cursor: "pointer", fontSize: 18, lineHeight: 1 }}>×</button>
+            </div>
+            <div style={{ fontSize: 12, color: t.headerSub, lineHeight: 1.6 }}>
+              Copy this and save it somewhere safe. Paste it into a future session to give the AI full context of your journals and conversation.
+            </div>
+            <textarea
+              readOnly
+              value={sessionText}
+              onClick={e => e.target.select()}
+              style={{ fontFamily: "monospace", fontSize: 11, lineHeight: 1.6, color: t.journalText, background: t.inputFieldBg, border: `1px solid ${t.inputFieldBorder}`, borderRadius: 4, padding: "12px 14px", resize: "none", outline: "none", flex: 1, minHeight: 260, overflowY: "auto" }}
+            />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => { navigator.clipboard.writeText(sessionText); setSessionCopied(true); setTimeout(() => setSessionCopied(false), 2500); }}
+                style={{ flex: 2, fontFamily: "'DM Sans',sans-serif", fontSize: 12, letterSpacing: ".08em", textTransform: "uppercase", background: sessionCopied ? (themeMode === "dark" ? "#2a4a2a" : "#d4edda") : t.saveBtnBg, border: "none", color: sessionCopied ? (themeMode === "dark" ? "#6ab87a" : "#2e8b57") : t.saveBtnText, padding: "11px 0", borderRadius: 2, cursor: "pointer", transition: "all .2s" }}>
+                {sessionCopied ? "✓ Copied!" : "Copy to Clipboard"}
+              </button>
+              <button onClick={() => setShowSessionModal(false)}
+                style={{ flex: 1, fontFamily: "'DM Sans',sans-serif", fontSize: 12, letterSpacing: ".07em", textTransform: "uppercase", background: "transparent", border: `1px solid ${t.btnBorder}`, color: t.btnText, padding: "11px 0", borderRadius: 2, cursor: "pointer" }}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-
-    <div id="proc"><div class="pring"></div><div class="ptxt" id="pTxt">Working…</div></div>
-    <div id="api-bar">
-      <span class="api-lbl">API Key</span>
-      <input id="apiIn" type="password" placeholder="sk-ant-api03-… (for AI features)"/>
-      <button class="api-save" onclick="saveKey()">Save</button>
-    </div>
-  </div>
-</div>
-
-<script>
-// ══ STORAGE ══
-const LS={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch{return null}},set:(k,v)=>localStorage.setItem(k,JSON.stringify(v)),del:k=>localStorage.removeItem(k)};
-function h(s){let n=0;for(let i=0;i<s.length;i++)n=Math.imul(31,n)+s.charCodeAt(i)|0;return n.toString(36);}
-function uk(k){return`cx_${CU}_${k}`;}
-
-// ══ AUTH ══
-let CU=null, authMode='login';
-function setAuthMode(m){
-  authMode=m;
-  document.getElementById('tab-login').classList.toggle('on',m==='login');
-  document.getElementById('tab-signup').classList.toggle('on',m==='signup');
-  document.getElementById('aBtn').textContent=m==='login'?'Sign In →':'Create Account →';
-  document.getElementById('aErr').textContent='';
+  );
 }
-function doAuth(){
-  const email=document.getElementById('aEmail').value.trim().toLowerCase();
-  const pass=document.getElementById('aPass').value;
-  const err=document.getElementById('aErr');
-  err.textContent='';
-  if(!email||!pass){err.textContent='Fill in all fields.';return;}
-  if(!email.includes('@')){err.textContent='Enter a valid email.';return;}
-  if(pass.length<6){err.textContent='Password must be 6+ characters.';return;}
-  const accts=LS.get('cx_accts')||{};
-  const ph=h(pass);
-  if(authMode==='signup'){
-    if(accts[email]){err.textContent='Account exists — sign in instead.';return;}
-    accts[email]={ph,at:Date.now()};LS.set('cx_accts',accts);
-  } else {
-    if(!accts[email]){err.textContent='No account found — create one first.';return;}
-    if(accts[email].ph!==ph){err.textContent='Wrong password.';return;}
-  }
-  CU=email;LS.set('cx_ses',email);
-  document.getElementById('S-auth').classList.remove('on');
-  document.getElementById('S-app').classList.add('on');
-  initApp();
-}
-function signOut(){LS.del('cx_ses');CU=null;location.reload();}
-document.getElementById('aPass').addEventListener('keydown',e=>{if(e.key==='Enter')doAuth();});
-(function(){const s=LS.get('cx_ses');const a=LS.get('cx_accts')||{};if(s&&a[s]){CU=s;document.getElementById('S-auth').classList.remove('on');document.getElementById('S-app').classList.add('on');setTimeout(initApp,0);}})();
-
-// ══ INIT ══
-function initApp(){
-  document.getElementById('sbUser').textContent=CU;
-  document.getElementById('eDate').valueAsDate=new Date();
-  loadKey();
-  renderEntries();
-  loadChat();
-  updateCNote();
-  // initMap called lazily on first map tab visit
-}
-
-// ══ SIDEBAR ══
-let sbOpen=true;
-function toggleSB(){
-  sbOpen=!sbOpen;
-  document.getElementById('sidebar').classList.toggle('col',!sbOpen);
-  document.getElementById('sbTog').textContent=sbOpen?'‹':'›';
-  if(curTab==='m') setTimeout(resizeMap,280);
-}
-
-// ══ TABS ══
-let curTab='j';
-function goTab(t){
-  curTab=t;
-  ['j','m','c'].forEach(x=>{
-    document.getElementById('tab-'+x).classList.toggle('on',x===t);
-    document.getElementById('ni-'+x).classList.toggle('on',x===t);
-  });
-  if(t==='m'){
-    requestAnimationFrame(()=>requestAnimationFrame(()=>{
-      if(!mapCanvas){initMap();}
-      resizeMap();
-      tryLoadMap();
-      if(mapData){
-        // Already have map data — show it
-        showMap();
-      }
-      // Otherwise map-empty div stays visible with the Build button
-    }));
-  }
-  if(t==='c'){updateCNote();scrollChat();}
-}
-
-// ══ API KEY ══
-function loadKey(){const k=LS.get(uk('key'));if(k){document.getElementById('apiIn').value=k;document.getElementById('api-bar').classList.add('hide');}else{document.getElementById('api-bar').classList.remove('hide');}}
-function saveKey(){const k=document.getElementById('apiIn').value.trim();if(!k)return;LS.set(uk('key'),k);document.getElementById('api-bar').classList.add('hide');updateCNote();toast('API key saved');}
-function getKey(){return LS.get(uk('key'))||'';}
-document.getElementById('apiIn').addEventListener('keydown',e=>{if(e.key==='Enter')saveKey();});
-
-// ══ ENTRIES ══
-function getEntries(){return LS.get(uk('entries'))||[];}
-function setEntries(e){LS.set(uk('entries'),e);}
-
-function toggleForm(){
-  const f=document.getElementById('eForm');
-  f.classList.toggle('open');
-  if(f.classList.contains('open')){document.getElementById('eDate').valueAsDate=new Date();document.getElementById('eTxt').value='';document.getElementById('eTxt').focus();}
-}
-function hintBulk(){document.getElementById('eTxt').placeholder='Paste multiple entries. Start each with a date:\n\n4/20\nEntry text here...\n\n4/19\nMore text...\n\nCortex auto-splits by date.';document.getElementById('eTxt').focus();}
-
-function parseBulk(txt){
-  const lines=txt.split('\n');
-  const entries=[];let curDate=null,curLines=[];
-  const isDate=l=>{const t=l.trim();if(!t)return null;if(/^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/.test(t))return t;if(/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}/i.test(t))return t;if(/^\d{4}-\d{2}-\d{2}$/.test(t))return t;return null;};
-  for(const l of lines){const d=isDate(l);if(d){if(curDate&&curLines.join('').trim())entries.push({date:curDate,text:curLines.join('\n').trim()});curDate=d;curLines=[];}else curLines.push(l);}
-  if(curDate&&curLines.join('').trim())entries.push({date:curDate,text:curLines.join('\n').trim()});
-  return entries.length>1?entries:null;
-}
-
-function saveEntry(){
-  const txt=document.getElementById('eTxt').value.trim();
-  const dv=document.getElementById('eDate').value;
-  if(!txt)return;
-  const entries=getEntries();
-  const bulk=parseBulk(txt);
-  if(bulk&&bulk.length>1){
-    bulk.forEach(e=>entries.push({id:Date.now()+Math.random(),date:e.date,text:e.text,at:Date.now()}));
-    entries.sort((a,b)=>new Date(b.date)-new Date(a.date));
-    setEntries(entries);renderEntries();toggleForm();
-    toast(`Imported ${bulk.length} entries`);return;
-  }
-  const dl=dv?new Date(dv+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
-  entries.unshift({id:Date.now(),date:dl,rawDate:dv,text:txt,at:Date.now()});
-  setEntries(entries);renderEntries();toggleForm();updateCNote();
-}
-
-function delEntry(id){if(!confirm('Delete this entry?'))return;setEntries(getEntries().filter(e=>e.id!==id));renderEntries();updateCNote();}
-
-function renderEntries(){
-  const entries=getEntries();
-  document.getElementById('eBadge').textContent=entries.length;
-  const wc=entries.reduce((s,e)=>s+e.text.split(/\s+/).length,0);
-  document.getElementById('jSub').textContent=entries.length===0?'No entries yet':`${entries.length} ${entries.length===1?'entry':'entries'} · ${wc.toLocaleString()} words`;
-  const list=document.getElementById('eList');
-  if(!entries.length){list.innerHTML=`<div class="empty"><div class="empty-ic">✦</div><div class="empty-t">Your journal is empty</div><div class="empty-s">Tap "+ New Entry" to begin,<br>or paste multiple entries at once.</div></div>`;return;}
-  list.innerHTML=entries.map(e=>`<div class="ecard" id="ec${e.id}" onclick="toggleEC('${e.id}')"><div class="edate-lbl">${esc(e.date)}</div><div class="etext"><div class="eprev">${esc(e.text)}</div><div class="efull">${esc(e.text)}</div></div><div class="emeta"><span class="ewc">${e.text.split(/\s+/).length} words</span><button class="edel" onclick="event.stopPropagation();delEntry(${e.id})">Delete</button></div></div>`).join('');
-}
-function toggleEC(id){document.getElementById('ec'+id)?.classList.toggle('exp');}
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');}
-
-// ══ TOAST ══
-function toast(msg){const t=document.createElement('div');t.style.cssText='position:fixed;bottom:28px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.95);border:1px solid rgba(0,255,231,0.25);color:rgba(0,255,231,0.75);font-size:9px;letter-spacing:.14em;padding:9px 18px;z-index:999;transition:opacity .35s;';t.textContent=msg;document.body.appendChild(t);setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),350);},1800);}
-
-// ══ MIND MAP ══
-function showMap(){
-  const el=document.getElementById('map-empty');
-  if(el)el.style.display='none';
-  const rb=document.getElementById('rebuild-btn');
-  if(rb)rb.style.display='block';
-  if(!mapAnimId)startMapAnim();else drawMap();
-}
-
-// ══ MIND MAP (pure Canvas 2D) ══
-let mapData=null,mapCanvas,mapCtx;
-let mapPan={x:0,y:0},mapZoom=1,mapDrag=false,mapLast={x:0,y:0};
-let mapNodes=[],mapHover=null,mapAnim=0,mapAnimId=null;
-const mhEl=document.getElementById('map-hover');
-
-// ── 3D MAP: orbit angles, perspective projection ──
-let camTheta=0.4, camPhi=1.1, camR=320, autoRotate=true;
-
-function initMap(){
-  mapCanvas=document.getElementById('mapCanvas');
-  mapCtx=mapCanvas.getContext('2d');
-
-  mapCanvas.addEventListener('mousedown',e=>{mapDrag=true;mapLast={x:e.clientX,y:e.clientY};autoRotate=false;});
-  mapCanvas.addEventListener('touchstart',e=>{mapDrag=true;mapLast={x:e.touches[0].clientX,y:e.touches[0].clientY};autoRotate=false;},{passive:true});
-  window.addEventListener('mouseup',()=>mapDrag=false);
-  window.addEventListener('touchend',()=>mapDrag=false);
-  window.addEventListener('mousemove',onMapMove);
-  window.addEventListener('touchmove',onMapTouchMove,{passive:true});
-  mapCanvas.addEventListener('wheel',e=>{e.preventDefault();camR=Math.max(150,Math.min(600,camR+e.deltaY*0.3));},{passive:false});
-}
-
-// Project 3D point to 2D screen
-function project3D(x3,y3,z3,W,H){
-  // Camera position
-  const cx=Math.sin(camPhi)*Math.sin(camTheta)*camR;
-  const cy=Math.cos(camPhi)*camR;
-  const cz=Math.sin(camPhi)*Math.cos(camTheta)*camR;
-  // Simple perspective: translate relative to camera
-  const dx=x3-cx, dy=y3-cy, dz=z3-cz;
-  // Camera basis vectors
-  const fwd=norm3(-dx,-dy,-dz);
-  const up=[0,1,0];
-  const right=cross3(fwd,up);
-  const upR=cross3(right,fwd);
-  // Project onto screen plane
-  const sx=dot3(dx,dy,dz,right[0],right[1],right[2]);
-  const sy=dot3(dx,dy,dz,upR[0],upR[1],upR[2]);
-  const sz=dot3(dx,dy,dz,fwd[0],fwd[1],fwd[2]);
-  const fov=600;
-  if(sz<=0) return null;
-  const scale=fov/sz;
-  return {sx:W/2+sx*scale, sy:H/2-sy*scale, scale, depth:sz};
-}
-function norm3(x,y,z){const l=Math.sqrt(x*x+y*y+z*z)||1;return[x/l,y/l,z/l];}
-function cross3(a,b){return[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];}
-function dot3(x,y,z,ax,ay,az){return x*ax+y*ay+z*az;}
-
-function onMapMove(e){
-  if(mapDrag){
-    camTheta-=(e.clientX-mapLast.x)*0.007;
-    camPhi=Math.max(0.3,Math.min(Math.PI-0.3,camPhi-(e.clientY-mapLast.y)*0.007));
-    mapLast={x:e.clientX,y:e.clientY};
-  }
-  // Hover
-  if(!mapData||!mapNodes.length)return;
-  const rect=mapCanvas.getBoundingClientRect();
-  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
-  const W=mapCanvas.width,H=mapCanvas.height;
-  let hit=null,bestDist=999;
-  for(const n of mapNodes){
-    const p=project3D(n.x3,n.y3,n.z3,W,H);
-    if(!p)continue;
-    const d=Math.sqrt((p.sx-mx)**2+(p.sy-my)**2);
-    const screenR=n.r*p.scale*0.8;
-    if(d<screenR+8&&d<bestDist){bestDist=d;hit={n,p};}
-  }
-  if(hit){
-    document.getElementById('mhL').textContent=hit.n.node.label;
-    document.getElementById('mhD').textContent=hit.n.node.detail;
-    mhEl.style.transform=`translate(${Math.min(e.clientX+12,W-180)}px,${e.clientY-10}px)`;
-    mhEl.classList.add('show');
-  } else mhEl.classList.remove('show');
-}
-
-function onMapTouchMove(e){
-  if(mapDrag&&e.touches.length===1){
-    const t=e.touches[0];
-    camTheta-=(t.clientX-mapLast.x)*0.007;
-    camPhi=Math.max(0.3,Math.min(Math.PI-0.3,camPhi-(t.clientY-mapLast.y)*0.007));
-    mapLast={x:t.clientX,y:t.clientY};
-  }
-}
-
-function resizeMap(){
-  if(!mapCanvas)return;
-  const tab=document.getElementById('tab-m');
-  const W=tab.offsetWidth||tab.clientWidth||window.innerWidth;
-  const H=tab.offsetHeight||tab.clientHeight||window.innerHeight;
-  if(W<10||H<10)return; // not visible yet
-  mapCanvas.width=W;
-  mapCanvas.height=H;
-  drawMap();
-}
-
-function drawMap(){
-  if(!mapCtx||!mapCanvas.width||!mapCanvas.height)return;
-  const W=mapCanvas.width,H=mapCanvas.height;
-  mapCtx.clearRect(0,0,W,H);
-
-  // Nebula background
-  const bg=mapCtx.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*0.7);
-  bg.addColorStop(0,'rgba(0,20,18,0.4)');bg.addColorStop(1,'rgba(0,0,0,0)');
-  mapCtx.fillStyle=bg;mapCtx.fillRect(0,0,W,H);
-
-  // Stars (fixed pattern)
-  for(let i=0;i<300;i++){
-    const sx=((i*137.5+11)%W),sy=((i*89.3+7)%H);
-    const a=0.2+((i*17)%10)*0.03;
-    mapCtx.globalAlpha=a;mapCtx.fillStyle='#fff';
-    mapCtx.fillRect(sx,sy,((i%3)+0.5)*0.6,((i%3)+0.5)*0.6);
-  }
-  mapCtx.globalAlpha=1;
-
-  if(!mapData||!mapNodes.length)return;
-
-  const t=mapAnim;
-
-  // Update 3D positions (animate categories orbiting)
-  for(const n of mapNodes){
-    if(n.node.type==='category'){
-      n.x3=Math.cos(n._a3+t*n._spd)*n._r3;
-      n.y3=Math.sin((n._a3+t*n._spd)*0.5)*18;
-      n.z3=Math.sin(n._a3+t*n._spd)*n._r3;
-    } else if(n.node.type==='leaf'){
-      const cat=mapNodes.find(c=>c.node.id===n.node._catId);
-      if(cat){
-        const drift=Math.sin(t*n._ds+n._dp)*4;
-        n.x3=cat.x3+n._ox;n.y3=cat.y3+n._oy+drift;n.z3=cat.z3+n._oz;
-      }
-    }
-  }
-
-  // Project all nodes
-  const projected=mapNodes.map(n=>{
-    const p=project3D(n.x3,n.y3,n.z3,W,H);
-    return{n,p};
-  }).filter(x=>x.p&&x.p.depth>0);
-
-  // Sort by depth (back to front)
-  projected.sort((a,b)=>b.p.depth-a.p.depth);
-
-  // Draw edges first
-  for(const {n,p} of projected){
-    if(n.node.type==='hub')continue;
-    const srcNode=n.node.type==='category'?mapNodes.find(x=>x.node.type==='hub'):mapNodes.find(x=>x.node.id===n.node._catId);
-    if(!srcNode)continue;
-    const sp=project3D(srcNode.x3,srcNode.y3,srcNode.z3,W,H);
-    if(!sp)continue;
-    const alpha=Math.min(0.25,0.25*(600/p.depth));
-    mapCtx.beginPath();mapCtx.moveTo(sp.sx,sp.sy);mapCtx.lineTo(p.sx,p.sy);
-    mapCtx.strokeStyle=n.node.color+Math.round(alpha*255).toString(16).padStart(2,'0');
-    mapCtx.lineWidth=Math.min(1,p.scale*0.6);mapCtx.stroke();
-
-    // Edge particle
-    const prog=(t*0.35+(mapNodes.indexOf(n)*0.13))%1;
-    const px=sp.sx+(p.sx-sp.sx)*prog,py=sp.sy+(p.sy-sp.sy)*prog;
-    const pr=Math.max(0.8,p.scale*1.5);
-    mapCtx.beginPath();mapCtx.arc(px,py,pr,0,Math.PI*2);
-    mapCtx.fillStyle=n.node.color;
-    mapCtx.globalAlpha=0.75*Math.sin(prog*Math.PI)*(Math.min(1,600/p.depth));
-    mapCtx.fill();mapCtx.globalAlpha=1;
-  }
-
-  // Draw nodes (front to back order reversed for nodes)
-  for(const {n,p} of [...projected].reverse()){
-    const depthFade=Math.min(1,Math.max(0.2,500/p.depth));
-    const pulse=1+0.05*(n.node.freshness/100)*Math.sin(t*1.8+n.node.freshness*0.1);
-    const r=Math.max(2,n.r*p.scale*pulse);
-
-    // Halo glow
-    const haloR=r*2.4;
-    const gr=mapCtx.createRadialGradient(p.sx,p.sy,r*0.3,p.sx,p.sy,haloR);
-    gr.addColorStop(0,n.node.color+'40');gr.addColorStop(0.5,n.node.color+'12');gr.addColorStop(1,'transparent');
-    mapCtx.globalAlpha=depthFade;
-    mapCtx.beginPath();mapCtx.arc(p.sx,p.sy,haloR,0,Math.PI*2);
-    mapCtx.fillStyle=gr;mapCtx.fill();
-
-    // Core sphere (with simple shading)
-    const sphereGr=mapCtx.createRadialGradient(p.sx-r*0.3,p.sy-r*0.3,0,p.sx,p.sy,r);
-    sphereGr.addColorStop(0,'rgba(255,255,255,0.35)');
-    sphereGr.addColorStop(0.4,n.node.color);
-    sphereGr.addColorStop(1,n.node.color+'88');
-    mapCtx.globalAlpha=0.88*depthFade;
-    mapCtx.beginPath();mapCtx.arc(p.sx,p.sy,r,0,Math.PI*2);
-    mapCtx.fillStyle=sphereGr;mapCtx.fill();
-    mapCtx.globalAlpha=1;
-
-    // Label for hub + categories
-    if(n.node.type!=='leaf'&&depthFade>0.4){
-      const fs=Math.max(8,Math.min(13,p.scale*12));
-      mapCtx.font=`${fs}px "Courier New"`;
-      mapCtx.textAlign='center';
-      mapCtx.globalAlpha=depthFade*0.88;
-      mapCtx.fillStyle=n.node.type==='hub'?'#00ffe7':n.node.color;
-      mapCtx.shadowColor=n.node.color;mapCtx.shadowBlur=6;
-      mapCtx.fillText(n.node.label.toUpperCase(),p.sx,p.sy-r-6);
-      mapCtx.shadowBlur=0;mapCtx.globalAlpha=1;
-    }
-  }
-}
-
-function startMapAnim(){
-  if(mapAnimId)cancelAnimationFrame(mapAnimId);
-  const loop=()=>{
-    if(autoRotate)camTheta+=0.003;
-    mapAnim+=0.016;
-    drawMap();
-    mapAnimId=requestAnimationFrame(loop);
-  };
-  loop();
-}
-
-function layoutNodes(data){
-  mapNodes=[];
-  const cats=data.nodes.filter(n=>n.type==='category');
-  const leaves=data.nodes.filter(n=>n.type==='leaf');
-  const CR=90; // orbit radius for categories
-
-  data.nodes.forEach(n=>{
-    let x3=0,y3=0,z3=0,r=8;
-    if(n.type==='hub'){
-      r=22; x3=0;y3=0;z3=0;
-    } else if(n.type==='category'){
-      const i=cats.indexOf(n);
-      const a=(i/cats.length)*Math.PI*2;
-      // Spread categories on a tilted ring for 3D look
-      x3=Math.cos(a)*CR; y3=Math.sin(a*0.5)*20; z3=Math.sin(a)*CR;
-      r=13;
-      n._a3=a; n._r3=CR; n._spd=0.07+Math.random()*0.04;
-    } else {
-      const cat=data.nodes.find(c=>c.id===n._catId);
-      const ci=cat?cats.indexOf(cat):0;
-      const ca=cat?(ci/cats.length)*Math.PI*2:0;
-      // Spread leaves in a sphere around their category
-      const th=Math.random()*Math.PI*2, ph=Math.random()*Math.PI;
-      const lr=38*(0.5+Math.random()*0.5);
-      n._ox=lr*Math.sin(ph)*Math.cos(th);
-      n._oy=lr*Math.cos(ph)*0.4;
-      n._oz=lr*Math.sin(ph)*Math.sin(th);
-      n._dp=Math.random()*Math.PI*2; n._ds=0.3+Math.random()*0.4;
-      const catX=Math.cos(ca)*CR, catZ=Math.sin(ca)*CR;
-      x3=catX+n._ox; y3=n._oy; z3=catZ+n._oz;
-      r=7;
-    }
-    mapNodes.push({node:n,x3,y3,z3,r});
-  });
-}
-
-async function rebuildMap(){
-  const entries=getEntries();
-  if(!entries.length){
-    alert('Add some journal entries first, then rebuild the map.');
-    return;
-  }
-  showProc('Building your mind map…');
-  try{
-    const apiKey=getKey();
-    let data;
-    if(apiKey){data=await buildMapAI(apiKey,entries);}
-    else{data=buildMapFallback(entries);}
-    // Assign _catId to leaves
-    data.edges.forEach(e=>{const t=data.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});
-    mapData=data;LS.set(uk('mapData'),data);
-    layoutNodes(data);
-    camTheta=0.4;camPhi=1.1;camR=320;
-    showMap();
-  }catch(e){
-    console.error('Map build error:',e);
-    // Always fall back to keyword map so something shows
-    const fb=buildMapFallback(entries);
-    fb.edges.forEach(ev=>{const tn=fb.nodes.find(n=>n.id===ev.t);if(tn&&tn.type==='leaf')tn._catId=ev.s;});
-    mapData=fb;LS.set(uk('mapData'),fb);
-    layoutNodes(fb);
-    showMap();
-  }
-  hideProc();
-}
-
-async function buildMapAI(apiKey,entries){
-  const txt=entries.slice(0,30).map(e=>`[${e.date}]\n${e.text}`).join('\n\n---\n\n');
-  const sys=`Extract a knowledge graph from journal entries. Return ONLY raw JSON starting with { and ending with }.
-Format: {"nodes":[...],"edges":[...]}
-Node: id(snake_case),type("hub"|"category"|"leaf"),label(1-3 words),color(hex),freshness(0-100),detail(1-2 sentences).
-Rules: 1 hub(id="hub",color="#00ffe7"), 4-7 categories(vivid colors), 8-16 leaves(inherit category color). Edges:{"s":"id","t":"id"}.`;
-  const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:3500,system:sys,messages:[{role:'user',content:`Entries:\n\n${txt}\n\nReturn JSON.`}]})});
-  if(!r.ok)throw new Error('API error');
-  const d=await r.json();
-  const raw=(d.content.find(b=>b.type==='text')||{}).text||'';
-  const s=raw.indexOf('{'),en=raw.lastIndexOf('}');
-  return JSON.parse(raw.slice(s,en+1));
-}
-
-function buildMapFallback(entries){
-  const txt=entries.map(e=>e.text).join(' ').toLowerCase();
-  const themes=[
-    {id:'c1',label:'Identity',color:'#ff6b6b',kw:['identity','self','who i am','myself']},
-    {id:'c2',label:'Discipline',color:'#6bcb77',kw:['discipline','action','gym','workout','productive']},
-    {id:'c3',label:'Mind',color:'#4d96ff',kw:['mind','thought','believe','think','fear']},
-    {id:'c4',label:'Emotions',color:'#c77dff',kw:['feel','emotion','desire','shame','doubt']},
-    {id:'c5',label:'Growth',color:'#ffd93d',kw:['grow','potential','greatness','success','future']},
-  ].filter(t=>t.kw.some(k=>txt.includes(k)));
-  const nodes=[{id:'hub',type:'hub',label:'MY MIND',color:'#00ffe7',freshness:100,detail:`${entries.length} entries mapped.`}];
-  const edges=[];
-  themes.forEach(t=>{nodes.push({id:t.id,type:'category',label:t.label,color:t.color,freshness:75,detail:`Themes around ${t.label.toLowerCase()} in your journal.`});edges.push({s:'hub',t:t.id});});
-  return{nodes,edges};
-}
-
-// Load saved map
-function tryLoadMap(){
-  const saved=LS.get(uk('mapData'));
-  if(saved){
-    saved.edges.forEach(e=>{const t=saved.nodes.find(n=>n.id===e.t);if(t&&t.type==='leaf')t._catId=e.s;});
-    mapData=saved;
-    layoutNodes(saved);
-    // Don't start anim yet — wait until map tab is actually visible
-  }
-}
-
-// ══ CHAT ══
-let chatH=[];
-function getChat(){return LS.get(uk('chat'))||[];}
-function saveChat(h){LS.set(uk('chat'),h.slice(-60));}
-
-function loadChat(){
-  chatH=getChat();
-  const msgs=document.getElementById('cMsgs');
-  msgs.innerHTML='';
-  const entries=getEntries();
-  addBubble('a',`Welcome back. I have ${entries.length} of your journal ${entries.length===1?'entry':'entries'} as context. Ask me anything.`,false);
-  chatH.forEach(m=>addBubble(m.role==='user'?'u':'a',m.content,false));
-  scrollChat();
-}
-
-function updateCNote(){
-  const entries=getEntries();
-  const k=getKey();
-  const wc=entries.reduce((s,e)=>s+e.text.split(/\s+/).length,0);
-  document.getElementById('cSub').textContent=entries.length===0?'No entries yet':
-    `${entries.length} ${entries.length===1?'entry':'entries'} · ${wc.toLocaleString()} words`;
-  document.getElementById('cNote').textContent=k?
-    `${entries.length} entries in context · API key saved`:
-    'Add your Anthropic API key in the bar below to enable AI chat';
-  document.getElementById('cNote').style.color=k?'rgba(0,255,231,0.28)':'rgba(255,107,107,0.45)';
-}
-
-function addBubble(role,text,anim=true){
-  const msgs=document.getElementById('cMsgs');
-  const div=document.createElement('div');div.className=`msg msg-${role}`;
-  const b=document.createElement('div');b.className='bubble';
-  b.innerHTML=text.replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>');
-  const m=document.createElement('div');m.className='mmeta';m.textContent=role==='u'?'You':'Cortex';
-  div.appendChild(b);div.appendChild(m);msgs.appendChild(div);
-  return b;
-}
-
-function addReflections(prompts){
-  const msgs=document.getElementById('cMsgs');
-  const div=document.createElement('div');div.className='msg msg-a rp';
-  div.innerHTML=`<div class="rp-lbl">Reflect deeper →</div><div class="rp-chips">${prompts.map(p=>`<button class="chip" onclick="useChip(this,'${p.replace(/'/g,"\\'")}')">${p}</button>`).join('')}</div>`;
-  msgs.appendChild(div);scrollChat();
-}
-function useChip(btn,txt){btn.closest('.rp').remove();document.getElementById('cIn').value=txt;sendMsg();}
-function scrollChat(){const m=document.getElementById('cMsgs');m.scrollTop=m.scrollHeight;}
-function clearChat(){saveChat([]);chatH=[];loadChat();}
-
-async function sendMsg(){
-  const inp=document.getElementById('cIn');
-  const txt=inp.value.trim();
-  if(!txt||document.getElementById('cSend').disabled)return;
-  const key=getKey();
-  if(!key){document.getElementById('api-bar').classList.remove('hide');toast('Add your API key first');return;}
-  inp.value='';inp.style.height='auto';
-  addBubble('u',txt);scrollChat();
-  chatH.push({role:'user',content:txt});
-  document.getElementById('cSend').disabled=true;
-  const thinking=addBubble('a','Thinking…');thinking.classList.add('thinking');scrollChat();
-  try{
-    const entries=getEntries();
-    const ctx=entries.slice(0,50).map(e=>`[${e.date}]\n${e.text}`).join('\n\n---\n\n');
-    const sys=`You are Cortex, a deeply insightful personal journal AI. You have read every journal entry this person has written. Be specific — reference actual things they wrote. Be honest and incisive. Point out patterns and tensions.
-
-End your response with exactly this format on its own line:
-PROMPTS:["question 1","question 2","question 3"]
-
---- JOURNAL (${entries.length} entries) ---
-${ctx}
---- END ---
-
-Respond in 2-4 short paragraphs. No bullet points.`;
-    const msgs=chatH.slice(-20).map(m=>({role:m.role,content:m.content}));
-    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1200,system:sys,messages:msgs})});
-    if(!r.ok){const e=await r.json().catch(()=>({}));throw new Error(e?.error?.message||`API ${r.status}`);}
-    const d=await r.json();
-    let reply=(d.content.find(b=>b.type==='text')||{}).text||'…';
-    let prompts=[];
-    const pm=reply.match(/PROMPTS:\[(.*?)\]/s);
-    if(pm){try{prompts=JSON.parse('['+pm[1]+']');}catch{}reply=reply.replace(/PROMPTS:\[.*?\]/s,'').trim();}
-    thinking.innerHTML=reply.replace(/\n\n/g,'<br><br>').replace(/\n/g,'<br>');
-    thinking.classList.remove('thinking');
-    chatH.push({role:'assistant',content:reply});saveChat(chatH);
-    if(prompts.length)addReflections(prompts);
-    scrollChat();
-  }catch(e){thinking.textContent='Error: '+e.message;thinking.classList.remove('thinking');chatH.pop();}
-  document.getElementById('cSend').disabled=false;scrollChat();
-}
-
-// ══ PROC ══
-function showProc(t){document.getElementById('pTxt').textContent=t;document.getElementById('proc').classList.add('on');}
-function hideProc(){document.getElementById('proc').classList.remove('on');}
-
-// ══ INPUT EVENTS ══
-document.getElementById('cIn').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg();}});
-document.getElementById('cIn').addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,110)+'px';});
-window.addEventListener('resize',()=>{if(curTab==='m'){resizeMap();}});
-
-// Map loads lazily when tab is first opened
-</script>
-</body>
-</html>
